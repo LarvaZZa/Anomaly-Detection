@@ -1,0 +1,98 @@
+{
+  "project_info": {
+    "project_number": "382415767629",
+    "firebase_url": "https://drone-data-21026-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "drone-data-21026",
+    "storage_bucket": "drone-data-21026.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:382415767629:android:146ee2914e47a46222f404",
+        "android_client_info": {
+          "package_name": "com.riis.livestream"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "382415767629-n190frm0e83tr0gtupgo45j1segu43u2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC_F8HLqwUPVb0zaKZstcabBlRttVL9UXk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "382415767629-n190frm0e83tr0gtupgo45j1segu43u2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:382415767629:android:5f64092f945e680d22f404",
+        "android_client_info": {
+          "package_name": "com.smart.demo0104"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "382415767629-n190frm0e83tr0gtupgo45j1segu43u2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC_F8HLqwUPVb0zaKZstcabBlRttVL9UXk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "382415767629-n190frm0e83tr0gtupgo45j1segu43u2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:382415767629:android:928765b466fd3d2722f404",
+        "android_client_info": {
+          "package_name": "main.demo0103"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "382415767629-n190frm0e83tr0gtupgo45j1segu43u2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC_F8HLqwUPVb0zaKZstcabBlRttVL9UXk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "382415767629-n190frm0e83tr0gtupgo45j1segu43u2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

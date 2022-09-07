@@ -9,21 +9,20 @@
 
 
     <TextView
-        android:id="@+id/addressText"
+        android:id="@+id/infoText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="User Address"
         android:textColor="@android:color/black"
         android:textSize="19sp" />
 
     <Button
-        android:id="@+id/locationButton"
+        android:id="@+id/primaryButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:text="Get Current Location"
+        android:text="Start"
         android:textAllCaps="false"
-        android:textSize="19sp" />
+        android:textSize="19sp"/>
 
     <fragment
         android:layout_width="match_parent"

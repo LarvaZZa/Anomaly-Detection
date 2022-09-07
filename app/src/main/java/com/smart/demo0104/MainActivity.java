@@ -19,6 +19,7 @@ import android.os.Bundle;
 
 import android.os.CountDownTimer;
 import android.os.Looper;
+import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -54,24 +55,23 @@ import java.util.Map;
 
 public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
-    private TextView AddressText;
-    private Button LocationButton;
+    private TextView infoText;
+    private Button primaryButton;
 
     private LocationRequest locationRequest;
-
     private SensorManager sensorManager;
     private Sensor sensor;
+
+    private long secForPrimaryDataCollection = 2;
+    private long secForAnomalyDataCollection = 4;
 
     private HashMap<Integer, float[]> sensorData = new HashMap<>();
     private int count = 0;
     private boolean initialSensorStop = false;
-
     private float[] threshold;
 
     private FirebaseFirestore db;
-
     private boolean lockDataUpload = false;
-
     private HashMap<String, double[]> data = new HashMap<>();
 
     @Override
@@ -79,17 +79,15 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        AddressText = findViewById(R.id.addressText);
-        LocationButton = findViewById(R.id.locationButton);
+        infoText = findViewById(R.id.infoText);
+        primaryButton = findViewById(R.id.primaryButton);
 
         locationRequest = LocationRequest.create();
         locationRequest.setPriority(Priority.PRIORITY_HIGH_ACCURACY);
         locationRequest.setInterval(100);
         locationRequest.setFastestInterval(100);
 
-        main();
-
-
+        primaryButton.setOnClickListener(v -> main());
     }
 
     private void main(){
@@ -98,10 +96,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         sensorManager.registerListener(MainActivity.this, sensor, SensorManager.SENSOR_DELAY_NORMAL);
 
-        new CountDownTimer(5000, 1000) { //5sec
+        new CountDownTimer(secForPrimaryDataCollection * 1000, 1000) { //5sec
             @Override
             public void onTick(long l) {
-
+                infoText.setText("Gathering Initial Data... \n Time remaining: " + l / 1000 + "s");
             }
 
             @Override
@@ -168,16 +166,18 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         sensorManager.registerListener(MainActivity.this, sensor, SensorManager.SENSOR_DELAY_NORMAL);
 
-        new CountDownTimer(5000, 1000) { //5sec
+        new CountDownTimer(secForAnomalyDataCollection * 1000, 1000) { //5sec
             @Override
             public void onTick(long l) {
-                AddressText.setText("seconds remaining: " + l / 1000);
+                infoText.setText("Detecting Anomalies... \n Time remaining: " + l / 1000 + "s");
             }
 
             @Override
             public void onFinish() {
                 sensorManager.unregisterListener(MainActivity.this);
+                infoText.setText("LOADING...");
                 retrieveData();
+                infoText.setText("DONE");
             }
         }.start();
     }
@@ -331,7 +331,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         if (!initialSensorStop){
             sensorData.put(count, new float[]{sensorEvent.values[0], sensorEvent.values[1], sensorEvent.values[2]});
-            AddressText.setText(String.format("%f\n%f\n%f", sensorEvent.values[0], sensorEvent.values[1], sensorEvent.values[2]));
             count++;
         } else if(!lockDataUpload && (sensorEvent.values[0] < threshold[0] || sensorEvent.values[0] > threshold[1] || sensorEvent.values[1] < threshold[2] ||
                 sensorEvent.values[1] > threshold[3] || sensorEvent.values[2] < threshold[4] || sensorEvent.values[2] > threshold[5])){

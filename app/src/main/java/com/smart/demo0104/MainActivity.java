@@ -14,6 +14,8 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.location.LocationManager;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.os.Build;
 import android.os.Bundle;
 
@@ -62,8 +64,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private SensorManager sensorManager;
     private Sensor sensor;
 
-    private long secForPrimaryDataCollection = 5;
-    private long secForAnomalyDataCollection = 5;
+    private long secForPrimaryDataCollection = 60;
+    private long secForAnomalyDataCollection = 60;
 
     private HashMap<Integer, double[]> sensorData = new HashMap<>();
     private int count = 0;
@@ -82,6 +84,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private FirebaseFirestore db;
     private boolean lockDataUpload = false;
     private HashMap<String, Object[]> data = new HashMap<>();
+
+    //private ToneGenerator toneGen1 = new ToneGenerator(AudioManager.STREAM_MUSIC, 100);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -140,9 +144,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         threshold[4]+"\n"+
                         threshold[5]+"\n");
                 System.out.println("\n");
-                System.out.println(deviation[0]);
-                System.out.println(deviation[1]);
-                System.out.println(deviation[2]);
+                System.out.println("X DEVIATION: " + deviation[0]);
+                System.out.println("Y DEVIATION: " + deviation[1]);
+                System.out.println("z devation: " + deviation[2]);
 
                 startAnomalyDetection(sensorManager);
             }
@@ -245,73 +249,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         mapFragment.getMapAsync(new MapService(data));
     }
 
-    private void getLocationOfAnomaly(confidence confidence) {
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-
-                if (isGPSEnabled()) {
-
-                    LocationServices.getFusedLocationProviderClient(MainActivity.this)
-                            .requestLocationUpdates(locationRequest, new LocationCallback() {
-
-
-
-                                @Override
-                                public void onLocationResult(@NonNull LocationResult locationResult) {
-                                    super.onLocationResult(locationResult);
-
-                                    LocationServices.getFusedLocationProviderClient(MainActivity.this)
-                                            .removeLocationUpdates(this);
-
-                                    if (locationResult != null && locationResult.getLocations().size() >0){
-
-                                        db = FirebaseFirestore.getInstance();
-
-                                        int index = locationResult.getLocations().size() - 1;
-                                        double latitude = locationResult.getLocations().get(index).getLatitude();
-                                        double longitude = locationResult.getLocations().get(index).getLongitude();
-
-                                        // Create a new anomaly with a latitude, longitude and confidence level
-                                        Map<String, Object> anomaly = new HashMap<>();
-                                        anomaly.put("lat", latitude);
-                                        anomaly.put("lng", longitude);
-                                        anomaly.put("confidence", confidence);
-
-                                        // Add a new document with a generated ID
-                                        db.collection("anomalies")
-                                                .add(anomaly)
-                                                .addOnSuccessListener(new OnSuccessListener<DocumentReference>() {
-                                                    @Override
-                                                    public void onSuccess(DocumentReference documentReference) {
-                                                            //BEEP
-                                                    }
-                                                })
-                                                .addOnFailureListener(new OnFailureListener() {
-                                                    @Override
-                                                    public void onFailure(@NonNull Exception e) {
-                                                        Toast.makeText(MainActivity.this, "ANOMALY UPLOAD ERROR",
-                                                                Toast.LENGTH_LONG).show();
-                                                    }
-                                                });
-                                    }
-                                }
-                            }, Looper.getMainLooper());
-
-                } else {
-                    turnOnGPS();
-                }
-
-            } else {
-                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
-            }
-        }
-    }
-
     //asks user to turn on GPS if GPS is off
     private void turnOnGPS() {
-
-
 
         LocationSettingsRequest.Builder builder = new LocationSettingsRequest.Builder()
                 .addLocationRequest(locationRequest);
@@ -320,31 +259,28 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         Task<LocationSettingsResponse> result = LocationServices.getSettingsClient(getApplicationContext())
                 .checkLocationSettings(builder.build());
 
-        result.addOnCompleteListener(new OnCompleteListener<LocationSettingsResponse>() {
-            @Override
-            public void onComplete(@NonNull Task<LocationSettingsResponse> task) {
+        result.addOnCompleteListener(task -> {
 
-                try {
-                    LocationSettingsResponse response = task.getResult(ApiException.class);
-                    Toast.makeText(MainActivity.this, "GPS is already turned on", Toast.LENGTH_SHORT).show();
+            try {
+                LocationSettingsResponse response = task.getResult(ApiException.class);
+                Toast.makeText(MainActivity.this, "GPS is already turned on", Toast.LENGTH_SHORT).show();
 
-                } catch (ApiException e) {
+            } catch (ApiException e) {
 
-                    switch (e.getStatusCode()) {
-                        case LocationSettingsStatusCodes.RESOLUTION_REQUIRED:
+                switch (e.getStatusCode()) {
+                    case LocationSettingsStatusCodes.RESOLUTION_REQUIRED:
 
-                            try {
-                                ResolvableApiException resolvableApiException = (ResolvableApiException) e;
-                                resolvableApiException.startResolutionForResult(MainActivity.this, 2);
-                            } catch (IntentSender.SendIntentException ex) {
-                                ex.printStackTrace();
-                            }
-                            break;
+                        try {
+                            ResolvableApiException resolvableApiException = (ResolvableApiException) e;
+                            resolvableApiException.startResolutionForResult(MainActivity.this, 2);
+                        } catch (IntentSender.SendIntentException ex) {
+                            ex.printStackTrace();
+                        }
+                        break;
 
-                        case LocationSettingsStatusCodes.SETTINGS_CHANGE_UNAVAILABLE:
-                            //Device does not have location
-                            break;
-                    }
+                    case LocationSettingsStatusCodes.SETTINGS_CHANGE_UNAVAILABLE:
+                        //Device does not have location
+                        break;
                 }
             }
         });
@@ -367,29 +303,103 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     @Override
     public void onSensorChanged(SensorEvent sensorEvent) {
 
+        double[] values = new double[]{sensorEvent.values[0], sensorEvent.values[1], sensorEvent.values[2]};
+
         if (!initialSensorStop){
-            sensorData.put(count, new double[]{sensorEvent.values[0], sensorEvent.values[1], sensorEvent.values[2]});
+            sensorData.put(count, values);
             count++;
-        } else if(!lockDataUpload){
-            lockDataUpload = true;
-            if (sensorEvent.values[0] < threshold[0] || sensorEvent.values[0] > threshold[1]){
-                getConfidence(sensorEvent.values[0], deviation[0], mean[0]);
-            } else if (sensorEvent.values[1] < threshold[2] || sensorEvent.values[1] > threshold[3]){
-                getConfidence(sensorEvent.values[1], deviation[1], mean[1]);
-            } else if (sensorEvent.values[2] < threshold[4] || sensorEvent.values[2] > threshold[5]){
-                getConfidence(sensorEvent.values[2], deviation[2], mean[2]);
-            }
-            lockDataUpload = false;
+        } else {
+            //FIX THIS DETECTION MAYBE?
+            checkAnomaly(sensorEvent.values[0], deviation[0], mean[0], values);
+            checkAnomaly(sensorEvent.values[1], deviation[1], mean[1], values);
+            checkAnomaly(sensorEvent.values[2], deviation[2], mean[2], values);
         }
     }
 
-    private void getConfidence(double value, double deviation, double mean){
-        if(value > mean+3*deviation || value < mean-3*deviation){
-            getLocationOfAnomaly(confidence.HIGH);
+    //may need synchronized
+    private void checkAnomaly(double value, double deviation, double mean, double[] values){
+        //FIX THIS DETECTION MAYBE?
+        if(value > mean+4*deviation || value < mean-4*deviation){
+            new Thread(new uploadRunnable(confidence.HIGH, values)).start();
+        } else if (value > mean+3*deviation || value < mean-3*deviation){
+            new Thread(new uploadRunnable(confidence.MEDIUM, values)).start();
         } else if (value > mean+2*deviation || value < mean-2*deviation){
-            getLocationOfAnomaly(confidence.MEDIUM);
-        } else {
-            getLocationOfAnomaly(confidence.LOW);
+            new Thread(new uploadRunnable(confidence.LOW, values)).start();
+        }
+    }
+
+    public class uploadRunnable implements Runnable {
+
+        private confidence confidence;
+        private double[] values;
+
+        public uploadRunnable(confidence confidence, double[] values){
+            this.confidence = confidence;
+            this.values = values;
+        }
+
+        public void run(){
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+
+                    if (isGPSEnabled()) {
+
+                        LocationServices.getFusedLocationProviderClient(MainActivity.this)
+                                .requestLocationUpdates(locationRequest, new LocationCallback() {
+
+                                    @Override
+                                    public void onLocationResult(@NonNull LocationResult locationResult) {
+                                        super.onLocationResult(locationResult);
+
+                                        LocationServices.getFusedLocationProviderClient(MainActivity.this)
+                                                .removeLocationUpdates(this);
+
+                                        if (locationResult != null && locationResult.getLocations().size() >0){
+
+                                            db = FirebaseFirestore.getInstance();
+
+                                            int index = locationResult.getLocations().size() - 1;
+                                            double latitude = locationResult.getLocations().get(index).getLatitude();
+                                            double longitude = locationResult.getLocations().get(index).getLongitude();
+
+                                            // Create a new anomaly with a latitude, longitude and confidence level (and x,y,z values)
+                                            Map<String, Object> anomaly = new HashMap<>();
+                                            anomaly.put("lat", latitude);
+                                            anomaly.put("lng", longitude);
+                                            anomaly.put("confidence", confidence);
+                                            anomaly.put("x", values[0]);
+                                            anomaly.put("y", values[1]);
+                                            anomaly.put("z", values[2]);
+                                            anomaly.put("time", System.currentTimeMillis());
+
+                                            // Add a new document with a generated ID
+                                            db.collection("anomalies")
+                                                    .add(anomaly)
+                                                    .addOnSuccessListener(new OnSuccessListener<DocumentReference>() {
+                                                        @Override
+                                                        public void onSuccess(DocumentReference documentReference) {
+
+                                                        }
+                                                    })
+                                                    .addOnFailureListener(new OnFailureListener() {
+                                                        @Override
+                                                        public void onFailure(@NonNull Exception e) {
+                                                            Toast.makeText(MainActivity.this, "ANOMALY UPLOAD ERROR",
+                                                                    Toast.LENGTH_LONG).show();
+                                                        }
+                                                    });
+                                        }
+                                    }
+                                }, Looper.getMainLooper());
+
+                    } else {
+                        turnOnGPS();
+                    }
+
+                } else {
+                    requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
+                }
+            }
         }
     }
 

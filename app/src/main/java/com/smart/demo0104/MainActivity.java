@@ -62,17 +62,26 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private SensorManager sensorManager;
     private Sensor sensor;
 
-    private long secForPrimaryDataCollection = 2;
-    private long secForAnomalyDataCollection = 4;
+    private long secForPrimaryDataCollection = 5;
+    private long secForAnomalyDataCollection = 5;
 
-    private HashMap<Integer, float[]> sensorData = new HashMap<>();
+    private HashMap<Integer, double[]> sensorData = new HashMap<>();
     private int count = 0;
     private boolean initialSensorStop = false;
-    private float[] threshold;
+
+    private double[] xValues;
+    private double[] yValues;
+    private double[] zValues;
+
+    private double[] threshold; //x min max; y min max; z min max
+    private Distribution[] distribution = new Distribution[3];
+    private double[] deviation = new double[3];
+    private double[] mean = new double[3];
+    private enum confidence {LOW, MEDIUM, HIGH};
 
     private FirebaseFirestore db;
     private boolean lockDataUpload = false;
-    private HashMap<String, double[]> data = new HashMap<>();
+    private HashMap<String, Object[]> data = new HashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -96,10 +105,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         sensorManager.registerListener(MainActivity.this, sensor, SensorManager.SENSOR_DELAY_NORMAL);
 
+        primaryButton.setVisibility(View.INVISIBLE);
+
         new CountDownTimer(secForPrimaryDataCollection * 1000, 1000) { //5sec
             @Override
             public void onTick(long l) {
-                infoText.setText("Gathering Initial Data... \n Time remaining: " + l / 1000 + "s");
+                infoText.setText("Gathering initial data... \n Time remaining: " + l / 1000 + "s");
             }
 
             @Override
@@ -109,23 +120,45 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
                 threshold = findThreshold(sensorData); //finds threshold
 
+                distribution[0] = new Distribution(xValues);
+                distribution[1] = new Distribution(yValues);
+                distribution[2] = new Distribution(zValues);
 
-                //threshold output
+                deviation[0] = distribution[0].getStandardDeviation();
+                deviation[1] = distribution[1].getStandardDeviation();
+                deviation[2] = distribution[2].getStandardDeviation();
+
+                mean[0] = distribution[0].getMean();
+                mean[1] = distribution[1].getMean();
+                mean[2] = distribution[2].getMean();
+
+                //threshold and standard deviation output
                 System.out.println(threshold[0]+"\n"+
                         threshold[1]+"\n"+
                         threshold[2]+"\n"+
                         threshold[3]+"\n"+
                         threshold[4]+"\n"+
                         threshold[5]+"\n");
+                System.out.println("\n");
+                System.out.println(deviation[0]);
+                System.out.println(deviation[1]);
+                System.out.println(deviation[2]);
 
                 startAnomalyDetection(sensorManager);
             }
         }.start();
     }
 
-    private float [] findThreshold(HashMap<Integer, float[]> sensorData) {
-        float[] result = null;
-        for(Map.Entry<Integer, float[]> entry : sensorData.entrySet()){
+    private double [] findThreshold(HashMap<Integer, double[]> sensorData) {
+        double[] result = null;
+
+        int dataSize = sensorData.size();
+        xValues = new double[dataSize];
+        yValues = new double[dataSize];
+        zValues = new double[dataSize];
+        count = 0;
+
+        for(Map.Entry<Integer, double[]> entry : sensorData.entrySet()){
             if (result != null){
 
                 //checking for X
@@ -150,7 +183,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 }
 
             } else {
-                result = new float[6];
+                result = new double[6];
                 result[0] = entry.getValue()[0]; //x min
                 result[1] = entry.getValue()[0]; //x max
                 result[2] = entry.getValue()[1]; //y min
@@ -158,6 +191,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 result[4] = entry.getValue()[2]; //z min
                 result[5] = entry.getValue()[2]; //z max
             }
+
+            //adding all x, y, and z values
+            xValues[count] = entry.getValue()[0];
+            yValues[count] = entry.getValue()[1];
+            zValues[count] = entry.getValue()[2];
+            count++;
         }
         return result;
     }
@@ -169,7 +208,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         new CountDownTimer(secForAnomalyDataCollection * 1000, 1000) { //5sec
             @Override
             public void onTick(long l) {
-                infoText.setText("Detecting Anomalies... \n Time remaining: " + l / 1000 + "s");
+                infoText.setText("Detecting anomalies... \n Time remaining: " + l / 1000 + "s");
             }
 
             @Override
@@ -191,7 +230,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     public void onComplete(@NonNull Task<QuerySnapshot> task) {
                         if (task.isSuccessful()) {
                             for (QueryDocumentSnapshot document : task.getResult()) {
-                                data.put(document.getId(), new double[]{(double) document.getData().get("lat"), (double) document.getData().get("lng")});
+                                data.put(document.getId(), new Object[]{document.getData().get("lat"), document.getData().get("lng"), document.getData().get("confidence")});
                             }
                             showResultsOnMap(data);
                         } else {
@@ -201,12 +240,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 });
     }
 
-    private void showResultsOnMap(HashMap<String, double[]> data){
+    private void showResultsOnMap(HashMap<String, Object[]> data){
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
         mapFragment.getMapAsync(new MapService(data));
     }
 
-    private void getLocationOfAnomaly() {
+    private void getLocationOfAnomaly(confidence confidence) {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
@@ -233,10 +272,11 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                         double latitude = locationResult.getLocations().get(index).getLatitude();
                                         double longitude = locationResult.getLocations().get(index).getLongitude();
 
-                                        // Create a new user with a first and last name
-                                        Map<String, Double> anomaly = new HashMap<>();
+                                        // Create a new anomaly with a latitude, longitude and confidence level
+                                        Map<String, Object> anomaly = new HashMap<>();
                                         anomaly.put("lat", latitude);
                                         anomaly.put("lng", longitude);
+                                        anomaly.put("confidence", confidence);
 
                                         // Add a new document with a generated ID
                                         db.collection("anomalies")
@@ -244,9 +284,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                                 .addOnSuccessListener(new OnSuccessListener<DocumentReference>() {
                                                     @Override
                                                     public void onSuccess(DocumentReference documentReference) {
-
-//                                                        Toast.makeText(MainActivity.this, "!!Anomaly Detected!!",
-//                                                                Toast.LENGTH_LONG).show();
+                                                            //BEEP
                                                     }
                                                 })
                                                 .addOnFailureListener(new OnFailureListener() {
@@ -330,13 +368,28 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     public void onSensorChanged(SensorEvent sensorEvent) {
 
         if (!initialSensorStop){
-            sensorData.put(count, new float[]{sensorEvent.values[0], sensorEvent.values[1], sensorEvent.values[2]});
+            sensorData.put(count, new double[]{sensorEvent.values[0], sensorEvent.values[1], sensorEvent.values[2]});
             count++;
-        } else if(!lockDataUpload && (sensorEvent.values[0] < threshold[0] || sensorEvent.values[0] > threshold[1] || sensorEvent.values[1] < threshold[2] ||
-                sensorEvent.values[1] > threshold[3] || sensorEvent.values[2] < threshold[4] || sensorEvent.values[2] > threshold[5])){
+        } else if(!lockDataUpload){
             lockDataUpload = true;
-            getLocationOfAnomaly();
+            if (sensorEvent.values[0] < threshold[0] || sensorEvent.values[0] > threshold[1]){
+                getConfidence(sensorEvent.values[0], deviation[0], mean[0]);
+            } else if (sensorEvent.values[1] < threshold[2] || sensorEvent.values[1] > threshold[3]){
+                getConfidence(sensorEvent.values[1], deviation[1], mean[1]);
+            } else if (sensorEvent.values[2] < threshold[4] || sensorEvent.values[2] > threshold[5]){
+                getConfidence(sensorEvent.values[2], deviation[2], mean[2]);
+            }
             lockDataUpload = false;
+        }
+    }
+
+    private void getConfidence(double value, double deviation, double mean){
+        if(value > mean+3*deviation || value < mean-3*deviation){
+            getLocationOfAnomaly(confidence.HIGH);
+        } else if (value > mean+2*deviation || value < mean-2*deviation){
+            getLocationOfAnomaly(confidence.MEDIUM);
+        } else {
+            getLocationOfAnomaly(confidence.LOW);
         }
     }
 

@@ -64,8 +64,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private SensorManager sensorManager;
     private Sensor sensor;
 
-    private long secForPrimaryDataCollection = 60;
-    private long secForAnomalyDataCollection = 60;
+    private long secForPrimaryDataCollection = 30; //time to collect initial data
+    private long secForAnomalyDataCollection = 60; //time for detecting anomalies and uploading to database
 
     private HashMap<Integer, double[]> sensorData = new HashMap<>();
     private int count = 0;
@@ -85,6 +85,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private boolean lockDataUpload = false;
     private HashMap<String, Object[]> data = new HashMap<>();
 
+    //a possible tone generator whenever an anomaly is detected but buggy
     //private ToneGenerator toneGen1 = new ToneGenerator(AudioManager.STREAM_MUSIC, 100);
 
     @Override
@@ -122,21 +123,25 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 sensorManager.unregisterListener(MainActivity.this); //stops accelerometer
                 initialSensorStop = true;
 
-                threshold = findThreshold(sensorData); //finds threshold
+                //finds threshold which is currently not used for finding anomalies, only the mean and deviation is used
+                threshold = findThreshold(sensorData);
 
+                //distribution for x,y,z values
                 distribution[0] = new Distribution(xValues);
                 distribution[1] = new Distribution(yValues);
                 distribution[2] = new Distribution(zValues);
 
+                //deviation for x,y,z values
                 deviation[0] = distribution[0].getStandardDeviation();
                 deviation[1] = distribution[1].getStandardDeviation();
                 deviation[2] = distribution[2].getStandardDeviation();
 
+                //mean for x,y,z values
                 mean[0] = distribution[0].getMean();
                 mean[1] = distribution[1].getMean();
                 mean[2] = distribution[2].getMean();
 
-                //threshold and standard deviation output
+                //threshold and standard deviation output for testing purposes
                 System.out.println(threshold[0]+"\n"+
                         threshold[1]+"\n"+
                         threshold[2]+"\n"+
@@ -225,6 +230,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         }.start();
     }
 
+    //gets stored anomalies data from database
     private void retrieveData(){
         db = FirebaseFirestore.getInstance();
         db.collection("anomalies")
@@ -301,7 +307,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
 
     @Override
-    public void onSensorChanged(SensorEvent sensorEvent) {
+    public synchronized void onSensorChanged(SensorEvent sensorEvent) {
 
         double[] values = new double[]{sensorEvent.values[0], sensorEvent.values[1], sensorEvent.values[2]};
 
@@ -309,22 +315,22 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             sensorData.put(count, values);
             count++;
         } else {
-            //FIX THIS DETECTION MAYBE?
-            checkAnomaly(sensorEvent.values[0], deviation[0], mean[0], values);
-            checkAnomaly(sensorEvent.values[1], deviation[1], mean[1], values);
+            //possible to check against x and y values for turning of the bike and for acceleration
+            //checkAnomaly(sensorEvent.values[0], deviation[0], mean[0], values);
+            //checkAnomaly(sensorEvent.values[1], deviation[1], mean[1], values);
+
+            //currently only checks against z value for bumps ant potholes
             checkAnomaly(sensorEvent.values[2], deviation[2], mean[2], values);
         }
     }
 
-    //may need synchronized
+    //may need to be synchronized
     private void checkAnomaly(double value, double deviation, double mean, double[] values){
         //FIX THIS DETECTION MAYBE?
-        if(value > mean+4*deviation || value < mean-4*deviation){
+        if(value > mean+3*deviation || value < mean-3*deviation){
             new Thread(new uploadRunnable(confidence.HIGH, values)).start();
-        } else if (value > mean+3*deviation || value < mean-3*deviation){
-            new Thread(new uploadRunnable(confidence.MEDIUM, values)).start();
         } else if (value > mean+2*deviation || value < mean-2*deviation){
-            new Thread(new uploadRunnable(confidence.LOW, values)).start();
+            new Thread(new uploadRunnable(confidence.MEDIUM, values)).start();
         }
     }
 
